@@ -69,6 +69,15 @@ button, input { font: inherit; color: inherit; }
 .zoom button:hover { border-color: var(--street); }
 .credit { position: absolute; left: 16px; bottom: 10px; font-size: 12px; color: var(--muted); }
 .credit a { color: inherit; }
+.progress { position: absolute; right: 16px; bottom: 40px; max-width: calc(100% - 92px); background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; font-size: 13px; line-height: 1.35; display: flex; flex-direction: column; gap: 4px; }
+.progress[hidden] { display: none; }
+.progress .key { display: flex; gap: 12px; flex-wrap: wrap; color: var(--muted); }
+.progress .key span { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.progress .sw { width: 18px; height: 4px; border-radius: 2px; background: var(--street); opacity: .6; }
+.progress .sw.done { background: var(--ok); opacity: 1; height: 5px; }
+.progress strong { font-family: var(--font-display); font-weight: 600; font-size: 17px; font-variant-numeric: tabular-nums; }
+.progress p { margin: 0; }
+.progress .city { color: var(--muted); font-variant-numeric: tabular-nums; }
 #tip { position: absolute; pointer-events: none; background: var(--ink); color: var(--bg); font-size: 13px; font-weight: 500; padding: 3px 8px; border-radius: 6px; white-space: nowrap; transform: translate(12px, 14px); }
 #tip[hidden] { display: none; }
 
@@ -125,6 +134,8 @@ button, input { font: inherit; color: inherit; }
   .search { flex: 1 1 160px; min-width: 150px; }
   .placa-nome { font-size: 28px; }
   .zoom { bottom: 34px; }
+  .progress { bottom: 34px; padding: 6px 10px; font-size: 12px; }
+  .progress strong { font-size: 15px; }
 }
 </style>
 </head>
@@ -145,6 +156,11 @@ button, input { font: inherit; color: inherit; }
     <div class="zoom">
       <button id="zin" type="button" aria-label="Aproximar">+</button>
       <button id="zout" type="button" aria-label="Afastar">&minus;</button>
+    </div>
+    <div class="progress" id="progress" hidden>
+      <div class="key"><span><i class="sw done"></i>Com verbete</span><span><i class="sw"></i>Sem verbete</span></div>
+      <p aria-live="polite"><strong id="pg-here"></strong> <span id="pg-here-t"></span></p>
+      <p class="city" id="pg-city"></p>
     </div>
     <div class="credit">Traçado das ruas: © colaboradores do <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a></div>
     <div id="tip" hidden></div>
@@ -200,7 +216,7 @@ function start(D) {
 
   // ---------- dados ----------
   var ways = [], byName = [];
-  for (var i = 0; i < D.n.length; i++) byName.push({ name: D.n[i], ways: [], len: 0, cls: 0, bb: [1e9, 1e9, -1e9, -1e9] });
+  for (var i = 0; i < D.n.length; i++) byName.push({ name: D.n[i], ways: [], len: 0, cls: 0, bb: [1e9, 1e9, -1e9, -1e9], done: false });
   D.w.forEach(function (w) {
     var f = w[2], n = f.length / 2, xy = new Float32Array(n * 2), la = 0, lo = 0;
     var bb = [1e9, 1e9, -1e9, -1e9], len = 0;
@@ -228,7 +244,7 @@ function start(D) {
 
   function readColors() {
     var s = getComputedStyle(document.documentElement);
-    ["bg", "street", "accent", "ink", "muted"].forEach(function (k) { col[k] = s.getPropertyValue("--" + k).trim(); });
+    ["bg", "street", "accent", "ink", "muted", "ok"].forEach(function (k) { col[k] = s.getPropertyValue("--" + k).trim(); });
   }
   function resize() {
     var r = wrap.getBoundingClientRect();
@@ -269,6 +285,16 @@ function start(D) {
       ctx.globalAlpha = alphas[c]; ctx.lineWidth = widths[c] * z; ctx.stroke();
     }
     ctx.globalAlpha = 1;
+    // ruas com verbete por cima, mais grossas e na cor de "feito"
+    if (indexed) {
+      ctx.strokeStyle = col.ok;
+      for (c = 0; c < 5; c++) {
+        ctx.beginPath();
+        for (j = 0; j < vis.length; j++) if (vis[j].cls === c && byName[vis[j].g].done) trace(vis[j]);
+        ctx.lineWidth = Math.max(2, widths[c] * z + 1.4); ctx.stroke();
+      }
+      progress(vis);
+    }
     function hl(g, alpha) {
       if (g < 0) return;
       ctx.beginPath(); byName[g].ways.forEach(trace);
@@ -280,6 +306,29 @@ function start(D) {
     if (hov >= 0 && hov !== sel) hl(hov, 0.55);
     hl(sel, 1);
     labels(vis, k);
+  }
+
+  // ---------- progresso ----------
+  // Conta as ruas que aparecem na tela: aproximando o mapa do seu bairro, o
+  // contador mostra quantas dali já têm verbete.
+  var indexed = false, doneTotal = 0, nf = new Intl.NumberFormat("pt-BR"), lastPg = "";
+  function progress(vis) {
+    var seen = new Set(), done = 0;
+    for (var i = 0; i < vis.length; i++) {
+      var g = vis[i].g; if (seen.has(g)) continue;
+      seen.add(g); if (byName[g].done) done++;
+    }
+    var all = seen.size >= byName.length * 0.95;
+    var key = done + "/" + seen.size + "/" + doneTotal + "/" + all;
+    if (key === lastPg) return; lastPg = key;
+    $("pg-here").textContent = nf.format(done) + " de " + nf.format(seen.size);
+    $("pg-here-t").textContent = (all ? "ruas da cidade têm verbete" : "ruas nesta área têm verbete");
+    $("pg-city").hidden = all;
+    $("pg-city").textContent = "Na cidade: " + nf.format(doneTotal) + " de " + nf.format(byName.length) + " (" + (100 * doneTotal / byName.length).toLocaleString("pt-BR", { maximumFractionDigits: 1 }) + "%)";
+  }
+  function markDone(g) {
+    if (byName[g].done) return;
+    byName[g].done = true; doneTotal++; lastPg = ""; draw();
   }
 
   function labels(vis, k) {
@@ -361,7 +410,7 @@ function start(D) {
       var h = pick(p[0], p[1], 7);
       if (h !== hov) { hov = h; draw(); }
       cv.classList.toggle("hit", h >= 0);
-      if (h >= 0) { tip.hidden = false; tip.textContent = byName[h].name; tip.style.left = Math.min(p[0], W - 220) + "px"; tip.style.top = p[1] + "px"; }
+      if (h >= 0) { tip.hidden = false; tip.textContent = byName[h].name + (indexed && !byName[h].done ? " · sem verbete" : ""); tip.style.left = Math.min(p[0], W - 220) + "px"; tip.style.top = p[1] + "px"; }
       else tip.hidden = true;
       return;
     }
@@ -464,6 +513,7 @@ function start(D) {
     fetch("verbetes/" + s + ".json", { signal: my.signal }).then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; }).then(function (v) {
       if (my.signal.aborted || sel !== g) return;
       if (v && Array.isArray(v.texto)) {
+        if (indexed) markDone(g);
         paras(v.texto);
         if (v.homenageado) { var p = document.createElement("p"); p.className = "who"; p.textContent = v.homenageado; bio.insertBefore(p, bio.firstChild); }
         fontes(v.fontes);
@@ -510,6 +560,13 @@ function start(D) {
   document.addEventListener("pointerdown", function (e) { if (!e.target.closest(".search")) hideRes(); });
 
   // ---------- início ----------
+  // data/verbetes.json é gerado por scripts/indice.py. Sem ele o mapa funciona, só não mostra o progresso.
+  fetch("data/verbetes.json").then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); }).then(function (lista) {
+    var idx = {}; byName.forEach(function (g, i) { idx[g.name] = i; });
+    indexed = true;
+    lista.forEach(function (nome) { if (nome in idx) markDone(idx[nome]); });
+    $("progress").hidden = false; lastPg = ""; draw();
+  }).catch(function () {});
   readColors();
   new MutationObserver(function () { readColors(); draw(); }).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
   window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", function () { readColors(); draw(); });

@@ -34,6 +34,12 @@ Cada verbete é um arquivo `verbetes/<nome-da-rua>.json`. O nome do arquivo é o
 
 Para conferir antes de enviar: `python scripts/validar.py`.
 
+### Progresso no mapa
+
+As ruas que já têm verbete aparecem em verde no mapa, e o quadro no canto mostra quantas ruas da área visível já foram escritas. Aproxime o mapa do seu bairro para ver o que falta por lá.
+
+A lista dessas ruas fica em `data/verbetes.json`, gerada por `python scripts/indice.py`. Você não precisa mexer nela no pull request: quando um verbete entra na `main`, a ação `.github/workflows/indice.yml` atualiza o arquivo.
+
 ## Rodar no seu computador
 
 ```
