@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ruas de Londrina</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* Layout: mapa de ruas em tela cheia; busca flutuando no canto; painel lateral
+   à direita cujo cabeçalho é uma placa de rua azul, como as de esquina. */
+:root {
+  --bg: #e9ece6;
+  --surface: #f8f9f5;
+  --ink: #1d2a2c;
+  --muted: #5c6b6a;
+  --line: #cfd6cf;
+  --street: #33474a;
+  --accent: #d1344b;
+  --placa: #1f4e9c;
+  --placa-ink: #ffffff;
+  --ok: #2c7a55;
+  --warn: #9a6a12;
+  --font-display: "Barlow Condensed", "Arial Narrow", "Helvetica Neue", Arial, sans-serif;
+  --font-body: "Barlow", "Helvetica Neue", Arial, sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #131a1c; --surface: #1c2527; --ink: #e6ece8; --muted: #9aa8a5; --line: #2f3b3d;
+    --street: #b9c7c3; --accent: #ff6f7f; --placa: #2a5fb8; --placa-ink: #ffffff;
+    --ok: #6cc79a; --warn: #e0b45a;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #131a1c; --surface: #1c2527; --ink: #e6ece8; --muted: #9aa8a5; --line: #2f3b3d;
+  --street: #b9c7c3; --accent: #ff6f7f; --placa: #2a5fb8; --placa-ink: #ffffff;
+  --ok: #6cc79a; --warn: #e0b45a;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 16px; line-height: 1.5; overflow: hidden; }
+button, input { font: inherit; color: inherit; }
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+#app { position: relative; height: 100%; display: flex; }
+#mapwrap { position: relative; flex: 1 1 auto; min-width: 0; height: 100%; }
+#map { display: block; width: 100%; height: 100%; touch-action: none; cursor: grab; }
+#map.dragging { cursor: grabbing; }
+#map.hit { cursor: pointer; }
+
+.topbar { position: absolute; top: 16px; left: 16px; right: 16px; display: flex; gap: 12px; align-items: flex-start; pointer-events: none; flex-wrap: wrap; }
+.brand { pointer-events: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 8px 14px; }
+.brand h1 { margin: 0; font-family: var(--font-display); font-weight: 700; font-size: 26px; line-height: 1.1; letter-spacing: .01em; text-transform: uppercase; }
+.brand p { margin: 0; font-size: 13px; color: var(--muted); }
+.search { pointer-events: auto; position: relative; flex: 0 1 340px; min-width: 220px; }
+.search input { width: 100%; height: 44px; padding: 0 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
+.search input::placeholder { color: var(--muted); }
+#results { list-style: none; margin: 6px 0 0; padding: 4px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; max-height: 50vh; overflow: auto; }
+#results[hidden] { display: none; }
+#results button { display: block; width: 100%; text-align: left; background: none; border: 0; border-radius: 6px; padding: 8px 10px; cursor: pointer; }
+#results button:hover, #results button.on { background: color-mix(in srgb, var(--accent) 16%, transparent); }
+#results .none { padding: 8px 10px; color: var(--muted); font-size: 14px; }
+
+.zoom { position: absolute; left: 16px; bottom: 40px; display: flex; flex-direction: column; gap: 6px; }
+.zoom button { width: 44px; height: 44px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; font-size: 22px; line-height: 1; cursor: pointer; }
+.zoom button:hover { border-color: var(--street); }
+.credit { position: absolute; left: 16px; bottom: 10px; font-size: 12px; color: var(--muted); }
+.credit a { color: inherit; }
+#tip { position: absolute; pointer-events: none; background: var(--ink); color: var(--bg); font-size: 13px; font-weight: 500; padding: 3px 8px; border-radius: 6px; white-space: nowrap; transform: translate(12px, 14px); }
+#tip[hidden] { display: none; }
+
+#panel { flex: 0 0 400px; max-width: 100%; height: 100%; background: var(--surface); border-left: 1px solid var(--line); overflow-y: auto; padding: 16px 20px 28px; display: flex; flex-direction: column; gap: 18px; }
+#panel[hidden] { display: none; }
+.panel-top { display: flex; justify-content: flex-end; }
+#close { background: none; border: 1px solid var(--line); border-radius: 8px; height: 36px; padding: 0 12px; cursor: pointer; font-size: 14px; }
+#close:hover { border-color: var(--street); }
+
+.placa { background: var(--placa); color: var(--placa-ink); border-radius: 8px; padding: 14px 18px 12px; box-shadow: inset 0 0 0 3px var(--placa), inset 0 0 0 5px color-mix(in srgb, var(--placa-ink) 85%, transparent); display: flex; flex-direction: column; gap: 2px; }
+.placa-tipo { font-family: var(--font-display); font-weight: 500; font-size: 17px; letter-spacing: .08em; text-transform: uppercase; opacity: .9; }
+.placa-nome { margin: 0; font-family: var(--font-display); font-weight: 700; font-size: 36px; line-height: 1.02; text-transform: uppercase; text-wrap: balance; overflow-wrap: anywhere; }
+.placa-cidade { margin-top: 6px; font-size: 12px; letter-spacing: .12em; text-transform: uppercase; opacity: .8; }
+
+.facts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 0; }
+.facts div { border-top: 2px solid var(--line); padding-top: 6px; }
+.facts dt { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+.facts dd { margin: 0; font-family: var(--font-display); font-weight: 600; font-size: 22px; font-variant-numeric: tabular-nums; }
+#aka { margin: 0; font-size: 14px; color: var(--muted); }
+#aka[hidden] { display: none; }
+
+.bio-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.bio-head h2 { margin: 0; font-family: var(--font-display); font-weight: 600; font-size: 22px; text-transform: uppercase; letter-spacing: .03em; }
+.badge { font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 999px; border: 1px solid currentColor; white-space: nowrap; }
+.badge.ok { color: var(--ok); }
+.badge.gen { color: var(--warn); }
+.badge[hidden] { display: none; }
+#bio { display: flex; flex-direction: column; gap: 10px; max-width: 65ch; }
+#bio p { margin: 0; }
+#bio .wait { color: var(--muted); }
+#bio .who { font-weight: 600; }
+#fontes { margin: 0; padding-left: 18px; font-size: 14px; display: flex; flex-direction: column; gap: 4px; }
+#fontes[hidden] { display: none; }
+#fontes a { color: var(--ink); text-underline-offset: 3px; overflow-wrap: anywhere; }
+#fontes a:hover { color: var(--accent); }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.btn { display: inline-flex; align-items: center; height: 40px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--street); background: none; cursor: pointer; font-weight: 500; text-decoration: none; color: var(--ink); font-size: 15px; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+:root[data-theme="dark"] .btn.primary { color: #1a0d10; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .btn.primary { color: #1a0d10; } }
+.btn:hover { filter: brightness(1.08); }
+.btn[hidden] { display: none; }
+.note { margin: 0; font-size: 13px; color: var(--muted); }
+.links { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--line); padding-top: 14px; }
+.links h3 { margin: 0 0 2px; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; font-weight: 600; }
+.links a { color: var(--ink); text-underline-offset: 3px; }
+.links a:hover { color: var(--accent); }
+
+@media (max-width: 760px) {
+  #app { flex-direction: column; }
+  #panel { flex: 0 0 52%; border-left: 0; border-top: 1px solid var(--line); height: auto; }
+  .brand p { display: none; }
+  .brand h1 { font-size: 20px; }
+  .search { flex: 1 1 160px; min-width: 150px; }
+  .placa-nome { font-size: 28px; }
+  .zoom { bottom: 34px; }
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="mapwrap">
+    <canvas id="map" aria-label="Mapa das ruas de Londrina. Use a busca para escolher uma rua pelo nome."></canvas>
+    <div class="topbar">
+      <div class="brand">
+        <h1>Ruas de Londrina</h1>
+        <p>Clique em uma rua para saber de onde vem o nome</p>
+      </div>
+      <div class="search">
+        <input id="q" type="search" placeholder="Buscar rua pelo nome" autocomplete="off" aria-label="Buscar rua pelo nome" aria-controls="results">
+        <ul id="results" hidden></ul>
+      </div>
+    </div>
+    <div class="zoom">
+      <button id="zin" type="button" aria-label="Aproximar">+</button>
+      <button id="zout" type="button" aria-label="Afastar">&minus;</button>
+    </div>
+    <div class="credit">Traçado das ruas: © colaboradores do <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a></div>
+    <div id="tip" hidden></div>
+  </div>
+
+  <aside id="panel" aria-label="Informações da rua" hidden>
+    <div class="panel-top"><button id="close" type="button">Fechar</button></div>
+    <div class="placa">
+      <span class="placa-tipo" id="p-tipo"></span>
+      <h2 class="placa-nome" id="p-nome"></h2>
+      <span class="placa-cidade">Londrina · Paraná</span>
+    </div>
+    <dl class="facts">
+      <div><dt>Extensão</dt><dd id="f-len"></dd></div>
+      <div><dt>Trechos</dt><dd id="f-seg"></dd></div>
+      <div><dt>Porte</dt><dd id="f-cls"></dd></div>
+    </dl>
+    <p id="aka" hidden></p>
+    <section>
+      <div class="bio-head">
+        <h2>De onde vem o nome</h2>
+        <span class="badge ok" id="b-ok" hidden>Com fontes</span>
+        <span class="badge gen" id="b-unk" hidden>Origem não confirmada</span>
+      </div>
+    </section>
+    <div id="bio" aria-live="polite"></div>
+    <ul id="fontes" hidden></ul>
+    <div class="actions">
+      <a class="btn primary" id="ask" hidden>Escrever este verbete</a>
+      <a class="btn" id="redo" hidden>Sugerir correção</a>
+    </div>
+    <p class="note" id="note" hidden>Os verbetes são escritos por voluntários e revisados antes de entrar no site. Veja como contribuir no README do repositório.</p>
+    <div class="links">
+      <h3>Para conferir</h3>
+      <a id="l-wiki" href="#">Procurar na Wikipédia</a>
+      <a id="l-lei" href="#">Procurar a lei que deu o nome à rua</a>
+      <a id="l-osm" href="#">Ver no OpenStreetMap</a>
+    </div>
+  </aside>
+</div>
+
+<script>
+"use strict";
+fetch("data/ruas.json").then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); }).then(start).catch(function () {
+  document.querySelector(".brand p").textContent = "Não foi possível carregar data/ruas.json. Abra o site por um servidor web, não direto do arquivo.";
+});
+function start(D) {
+  var LAT0 = D.o[0], LON0 = D.o[1];
+  var MX = 111320 * Math.cos(LAT0 * Math.PI / 180) / 1e5, MY = 110574 / 1e5;
+
+  var CLS = ["Rua local", "Coletora", "Arterial", "Via principal", "Rodovia"];
+  var TIPOS = /^(Rua|Avenida|Travessa|Alameda|Rodovia|Estrada|Praça|Via|Viela|Largo|Marginal|Calçadão|Passagem|Acesso|Contorno|Viaduto|Ponte|Túnel|Anel|Rotatória|Trevo)\s+(.+)$/i;
+
+  // ---------- dados ----------
+  var ways = [], byName = [];
+  for (var i = 0; i < D.n.length; i++) byName.push({ name: D.n[i], ways: [], len: 0, cls: 0, bb: [1e9, 1e9, -1e9, -1e9] });
+  D.w.forEach(function (w) {
+    var f = w[2], n = f.length / 2, xy = new Float32Array(n * 2), la = 0, lo = 0;
+    var bb = [1e9, 1e9, -1e9, -1e9], len = 0;
+    for (var j = 0; j < n; j++) {
+      la += f[2 * j]; lo += f[2 * j + 1];
+      var x = lo * MX, y = -la * MY;
+      xy[2 * j] = x; xy[2 * j + 1] = y;
+      if (x < bb[0]) bb[0] = x; if (y < bb[1]) bb[1] = y; if (x > bb[2]) bb[2] = x; if (y > bb[3]) bb[3] = y;
+      if (j) len += Math.hypot(x - xy[2 * j - 2], y - xy[2 * j - 1]);
+    }
+    var g = byName[w[0]], o = { g: w[0], cls: w[1], xy: xy, bb: bb, len: len };
+    ways.push(o); g.ways.push(o); g.len += len; if (w[1] > g.cls) g.cls = w[1];
+    if (bb[0] < g.bb[0]) g.bb[0] = bb[0]; if (bb[1] < g.bb[1]) g.bb[1] = bb[1];
+    if (bb[2] > g.bb[2]) g.bb[2] = bb[2]; if (bb[3] > g.bb[3]) g.bb[3] = bb[3];
+  });
+  function fold(s) { return s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase(); }
+  byName.forEach(function (g) { g.key = fold(g.name); });
+
+  // ---------- vista ----------
+  var cv = document.getElementById("map"), ctx = cv.getContext("2d"), wrap = document.getElementById("mapwrap");
+  var W = 0, H = 0, dpr = 1;
+  var view = { cx: 0, cy: 0, k: 0.09 };
+  var sel = -1, hov = -1, col = {};
+  var reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  function readColors() {
+    var s = getComputedStyle(document.documentElement);
+    ["bg", "street", "accent", "ink", "muted"].forEach(function (k) { col[k] = s.getPropertyValue("--" + k).trim(); });
+  }
+  function resize() {
+    var r = wrap.getBoundingClientRect();
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    W = Math.max(50, r.width); H = Math.max(50, r.height);
+    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+    draw();
+  }
+  var pending = false;
+  function draw() { if (!pending) { pending = true; requestAnimationFrame(render); } }
+
+  function sx(x) { return (x - view.cx) * view.k + W / 2; }
+  function sy(y) { return (y - view.cy) * view.k + H / 2; }
+
+  function trace(w) {
+    var a = w.xy; ctx.moveTo(sx(a[0]), sy(a[1]));
+    for (var j = 2; j < a.length; j += 2) ctx.lineTo(sx(a[j]), sy(a[j + 1]));
+  }
+  function render() {
+    pending = false;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = col.bg; ctx.fillRect(0, 0, W, H);
+    var k = view.k, hw = W / 2 / k, hh = H / 2 / k;
+    var x0 = view.cx - hw, x1 = view.cx + hw, y0 = view.cy - hh, y1 = view.cy + hh;
+    var vis = [];
+    for (var i = 0; i < ways.length; i++) {
+      var w = ways[i], b = w.bb;
+      if (b[2] < x0 || b[0] > x1 || b[3] < y0 || b[1] > y1) continue;
+      vis.push(w);
+    }
+    ctx.lineCap = "round"; ctx.lineJoin = "round"; ctx.strokeStyle = col.street;
+    var z = Math.max(0.35, Math.min(2.4, Math.pow(k / 0.09, 0.55)));
+    var widths = [0.9, 1.5, 2.1, 2.8, 3.4], alphas = [0.5, 0.75, 0.9, 1, 1];
+    if (k < 0.03) alphas[0] = 0.3;
+    for (var c = 0; c < 5; c++) {
+      ctx.beginPath();
+      for (var j = 0; j < vis.length; j++) if (vis[j].cls === c) trace(vis[j]);
+      ctx.globalAlpha = alphas[c]; ctx.lineWidth = widths[c] * z; ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+    function hl(g, alpha) {
+      if (g < 0) return;
+      ctx.beginPath(); byName[g].ways.forEach(trace);
+      ctx.strokeStyle = col.accent;
+      ctx.globalAlpha = 0.28 * alpha; ctx.lineWidth = widths[byName[g].cls] * z + 12; ctx.stroke();
+      ctx.globalAlpha = alpha; ctx.lineWidth = Math.max(3, widths[byName[g].cls] * z + 1.5); ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+    if (hov >= 0 && hov !== sel) hl(hov, 0.55);
+    hl(sel, 1);
+    labels(vis, k);
+  }
+
+  function labels(vis, k) {
+    if (k < 0.2) return;
+    var minCls = k > 0.75 ? 0 : k > 0.4 ? 1 : 2;
+    var placed = [];
+    ctx.font = "600 12px " + getComputedStyle(document.body).fontFamily;
+    ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.lineJoin = "round";
+    var order = vis.slice().sort(function (a, b) { return (b.g === sel) - (a.g === sel) || b.cls - a.cls || b.len - a.len; });
+    for (var i = 0; i < order.length && placed.length < 90; i++) {
+      var w = order[i];
+      if (w.cls < minCls && w.g !== sel) continue;
+      var name = byName[w.g].name, tw = ctx.measureText(name).width;
+      if (w.len * k < tw + 16) continue;
+      // ponto do meio do trecho
+      var a = w.xy, half = w.len / 2, acc = 0, px = 0, py = 0, ang = 0;
+      for (var j = 2; j < a.length; j += 2) {
+        var d = Math.hypot(a[j] - a[j - 2], a[j + 1] - a[j - 1]);
+        if (acc + d >= half) {
+          var t = d ? (half - acc) / d : 0;
+          px = sx(a[j - 2] + (a[j] - a[j - 2]) * t); py = sy(a[j - 1] + (a[j + 1] - a[j - 1]) * t);
+          ang = Math.atan2(a[j + 1] - a[j - 1], a[j] - a[j - 2]); break;
+        }
+        acc += d;
+      }
+      if (px < 0 || px > W || py < 0 || py > H) continue;
+      if (ang > Math.PI / 2) ang -= Math.PI; if (ang < -Math.PI / 2) ang += Math.PI;
+      var ok = true, r = tw / 2 + 8;
+      for (var p = 0; p < placed.length; p++) {
+        var q = placed[p], dd = Math.hypot(q.x - px, q.y - py);
+        if (dd < (q.r + r) * 0.8 || (q.g === w.g && dd < 320)) { ok = false; break; }
+      }
+      if (!ok) continue;
+      placed.push({ x: px, y: py, r: r, g: w.g });
+      ctx.save(); ctx.translate(px, py); ctx.rotate(ang);
+      ctx.strokeStyle = col.bg; ctx.lineWidth = 4; ctx.strokeText(name, 0, 0);
+      ctx.fillStyle = w.g === sel ? col.accent : col.ink; ctx.fillText(name, 0, 0);
+      ctx.restore();
+    }
+  }
+
+  // ---------- acerto de clique ----------
+  function pick(px, py, tol) {
+    var k = view.k, wx = (px - W / 2) / k + view.cx, wy = (py - H / 2) / k + view.cy, t = tol / k;
+    var best = -1, bd = t * t;
+    for (var i = 0; i < ways.length; i++) {
+      var w = ways[i], b = w.bb;
+      if (wx < b[0] - t || wx > b[2] + t || wy < b[1] - t || wy > b[3] + t) continue;
+      var a = w.xy;
+      for (var j = 2; j < a.length; j += 2) {
+        var ax = a[j - 2], ay = a[j - 1], dx = a[j] - ax, dy = a[j + 1] - ay;
+        var l2 = dx * dx + dy * dy, u = l2 ? ((wx - ax) * dx + (wy - ay) * dy) / l2 : 0;
+        u = u < 0 ? 0 : u > 1 ? 1 : u;
+        var ex = ax + dx * u - wx, ey = ay + dy * u - wy, d2 = ex * ex + ey * ey;
+        // vias maiores ganham um pequeno desempate
+        if (d2 < bd) { bd = d2; best = w.g; }
+      }
+    }
+    return best;
+  }
+
+  // ---------- gestos ----------
+  var ptrs = new Map(), moved = 0, start = null, pinch = null, tip = document.getElementById("tip");
+  function local(e) { var r = cv.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; }
+  function zoomAt(px, py, f) {
+    var nk = Math.max(0.006, Math.min(5, view.k * f));
+    var wx = (px - W / 2) / view.k + view.cx, wy = (py - H / 2) / view.k + view.cy;
+    view.k = nk; view.cx = wx - (px - W / 2) / nk; view.cy = wy - (py - H / 2) / nk; draw();
+  }
+  cv.addEventListener("pointerdown", function (e) {
+    stopAnim(); cv.setPointerCapture(e.pointerId);
+    ptrs.set(e.pointerId, local(e)); moved = 0; start = local(e);
+    if (ptrs.size === 2) { var p = Array.from(ptrs.values()); pinch = Math.hypot(p[0][0] - p[1][0], p[0][1] - p[1][1]); }
+    cv.classList.add("dragging");
+  });
+  cv.addEventListener("pointermove", function (e) {
+    var p = local(e);
+    if (!ptrs.has(e.pointerId)) {
+      var h = pick(p[0], p[1], 7);
+      if (h !== hov) { hov = h; draw(); }
+      cv.classList.toggle("hit", h >= 0);
+      if (h >= 0) { tip.hidden = false; tip.textContent = byName[h].name; tip.style.left = Math.min(p[0], W - 220) + "px"; tip.style.top = p[1] + "px"; }
+      else tip.hidden = true;
+      return;
+    }
+    var o = ptrs.get(e.pointerId); ptrs.set(e.pointerId, p);
+    if (ptrs.size === 1) {
+      moved += Math.abs(p[0] - o[0]) + Math.abs(p[1] - o[1]);
+      view.cx -= (p[0] - o[0]) / view.k; view.cy -= (p[1] - o[1]) / view.k; draw();
+    } else if (ptrs.size === 2) {
+      var q = Array.from(ptrs.values()), d = Math.hypot(q[0][0] - q[1][0], q[0][1] - q[1][1]);
+      if (pinch) zoomAt((q[0][0] + q[1][0]) / 2, (q[0][1] + q[1][1]) / 2, d / pinch);
+      pinch = d; moved = 99;
+    }
+  });
+  function up(e) {
+    if (!ptrs.has(e.pointerId)) return;
+    var p = local(e), single = ptrs.size === 1;
+    ptrs.delete(e.pointerId); pinch = null;
+    if (!ptrs.size) cv.classList.remove("dragging");
+    if (single && moved < 6 && e.type === "pointerup") {
+      var g = pick(p[0], p[1], e.pointerType === "touch" ? 16 : 9);
+      if (g >= 0) select(g, false);
+    }
+  }
+  cv.addEventListener("pointerup", up); cv.addEventListener("pointercancel", up);
+  cv.addEventListener("pointerleave", function () { if (hov >= 0) { hov = -1; draw(); } tip.hidden = true; });
+  cv.addEventListener("wheel", function (e) {
+    e.preventDefault(); stopAnim(); var p = local(e);
+    zoomAt(p[0], p[1], Math.exp(-e.deltaY * (e.deltaMode ? 0.05 : 0.0016)));
+  }, { passive: false });
+  document.getElementById("zin").addEventListener("click", function () { zoomAt(W / 2, H / 2, 1.6); });
+  document.getElementById("zout").addEventListener("click", function () { zoomAt(W / 2, H / 2, 1 / 1.6); });
+
+  var anim = 0;
+  function stopAnim() { if (anim) { cancelAnimationFrame(anim); anim = 0; } }
+  function flyTo(cx, cy, k) {
+    stopAnim();
+    if (reduce) { view.cx = cx; view.cy = cy; view.k = k; draw(); return; }
+    var f = { cx: view.cx, cy: view.cy, lk: Math.log(view.k) }, t0 = performance.now(), lk = Math.log(k);
+    (function step(now) {
+      var t = Math.min(1, (now - t0) / 550), e = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+      view.cx = f.cx + (cx - f.cx) * e; view.cy = f.cy + (cy - f.cy) * e; view.k = Math.exp(f.lk + (lk - f.lk) * e);
+      draw(); anim = t < 1 ? requestAnimationFrame(step) : 0;
+    })(t0);
+  }
+  function fit(g) {
+    var b = byName[g].bb, pad = 90;
+    var k = Math.min((W - pad * 2) / Math.max(60, b[2] - b[0]), (H - pad * 2) / Math.max(60, b[3] - b[1]));
+    flyTo((b[0] + b[2]) / 2, (b[1] + b[3]) / 2, Math.max(0.02, Math.min(1.4, k)));
+  }
+
+  // ---------- painel ----------
+  var $ = function (id) { return document.getElementById(id); };
+  var panel = $("panel"), bio = $("bio"), ctl = null;
+  function parts(name) { var m = TIPOS.exec(name); return m ? [m[1], m[2]] : ["Via", name]; }
+  function paras(list) {
+    bio.textContent = "";
+    list.forEach(function (t) { var p = document.createElement("p"); p.textContent = t; bio.appendChild(p); });
+  }
+  function show(ids) { ["b-ok", "b-unk", "ask", "redo", "note"].forEach(function (id) { $(id).hidden = ids.indexOf(id) < 0; }); }
+  function slug(name) { return fold(name).replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""); }
+  // Repositório: descoberto pelo endereço do GitHub Pages ou pela meta "repo" (usuario/repositorio).
+  var REPO = (function () {
+    var m = document.querySelector('meta[name="repo"]'), h = location.hostname, p = location.pathname.split("/")[1];
+    if (m && m.content) return m.content;
+    return /\.github\.io$/.test(h) && p ? h.split(".")[0] + "/" + p : "";
+  })();
+  function modelo(name) {
+    return JSON.stringify({ rua: name, homenageado: "", confirmado: true, texto: ["Primeiro parágrafo.", "Segundo parágrafo."], fontes: [{ titulo: "", url: "" }] }, null, 2) + "\n";
+  }
+  function fontes(list) {
+    var ul = $("fontes"); ul.textContent = "";
+    (list || []).forEach(function (f) {
+      if (!f || !/^https?:\/\//.test(f.url || "")) return;
+      var li = document.createElement("li"), a = document.createElement("a");
+      a.href = f.url; a.textContent = f.titulo || f.url; li.appendChild(a); ul.appendChild(li);
+    });
+    ul.hidden = !ul.children.length;
+  }
+  function select(g, zoom) {
+    if (ctl) { ctl.abort(); ctl = null; }
+    sel = g; var G = byName[g], pr = parts(G.name);
+    var wasHidden = panel.hidden; panel.hidden = false;
+    if (wasHidden) resize();
+    $("p-tipo").textContent = pr[0]; $("p-nome").textContent = pr[1];
+    $("f-len").textContent = G.len >= 1000 ? (G.len / 1000).toFixed(1).replace(".", ",") + " km" : Math.round(G.len / 10) * 10 + " m";
+    $("f-seg").textContent = G.ways.length; $("f-cls").textContent = CLS[G.cls];
+    var alt = D.a[g]; $("aka").hidden = !alt;
+    if (alt) $("aka").textContent = "Também aparece como: " + alt.join("; ") + ".";
+    var q = encodeURIComponent(pr[1]);
+    $("l-wiki").href = "https://pt.wikipedia.org/w/index.php?search=" + q;
+    $("l-lei").href = "https://www.google.com/search?q=" + encodeURIComponent('"' + G.name + '" Londrina lei denomina');
+    $("l-osm").href = "https://www.openstreetmap.org/search?query=" + encodeURIComponent(G.name + ", Londrina");
+    panel.scrollTop = 0;
+    var s = slug(G.name), my = ctl = new AbortController();
+    fontes([]); show([]); paras(["Carregando…"]); bio.firstChild.className = "wait";
+    if (REPO) {
+      $("ask").href = "https://github.com/" + REPO + "/new/main/verbetes?filename=" + s + ".json&value=" + encodeURIComponent(modelo(G.name));
+      $("redo").href = "https://github.com/" + REPO + "/edit/main/verbetes/" + s + ".json";
+    }
+    fetch("verbetes/" + s + ".json", { signal: my.signal }).then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; }).then(function (v) {
+      if (my.signal.aborted || sel !== g) return;
+      if (v && Array.isArray(v.texto)) {
+        paras(v.texto);
+        if (v.homenageado) { var p = document.createElement("p"); p.className = "who"; p.textContent = v.homenageado; bio.insertBefore(p, bio.firstChild); }
+        fontes(v.fontes);
+        show([v.confirmado === false ? "b-unk" : "b-ok", REPO ? "redo" : "", "note"]);
+      } else {
+        paras(["Esta rua ainda não tem verbete. Se você conhece a história desse nome, pode escrever e enviar para revisão."]);
+        bio.firstChild.className = "wait"; show([REPO ? "ask" : "", "note"]);
+      }
+    });
+    if (zoom) fit(g); else draw();
+  }
+
+  function closePanel() { if (ctl) ctl.abort(); panel.hidden = true; sel = -1; resize(); }
+  $("close").addEventListener("click", closePanel);
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape") { if (!res.hidden) hideRes(); else if (!panel.hidden) closePanel(); } });
+
+  // ---------- busca ----------
+  var q = $("q"), res = $("results"), on = -1, found = [];
+  function hideRes() { res.hidden = true; on = -1; }
+  function search() {
+    var s = fold(q.value.trim()); res.textContent = "";
+    if (s.length < 2) { hideRes(); return; }
+    found = [];
+    for (var i = 0; i < byName.length; i++) { var p = byName[i].key.indexOf(s); if (p >= 0) found.push([p, byName[i].key.length, i]); }
+    found.sort(function (a, b) { return a[0] - b[0] || a[1] - b[1]; }); found = found.slice(0, 8);
+    if (!found.length) { var li = document.createElement("li"); li.className = "none"; li.textContent = "Nenhuma rua com esse nome. Tente só uma parte, como “Caxias”."; res.appendChild(li); }
+    found.forEach(function (f, n) {
+      var li = document.createElement("li"), b = document.createElement("button");
+      b.type = "button"; b.textContent = byName[f[2]].name;
+      b.addEventListener("click", function () { go(n); });
+      li.appendChild(b); res.appendChild(li);
+    });
+    on = -1; res.hidden = false;
+  }
+  function go(n) { var f = found[n]; if (!f) return; q.value = byName[f[2]].name; hideRes(); select(f[2], true); }
+  q.addEventListener("input", search);
+  q.addEventListener("keydown", function (e) {
+    if (res.hidden || !found.length) return;
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault(); on = (on + (e.key === "ArrowDown" ? 1 : -1) + found.length) % found.length;
+      Array.from(res.querySelectorAll("button")).forEach(function (b, i) { b.classList.toggle("on", i === on); });
+    } else if (e.key === "Enter") { e.preventDefault(); go(on < 0 ? 0 : on); }
+  });
+  document.addEventListener("pointerdown", function (e) { if (!e.target.closest(".search")) hideRes(); });
+
+  // ---------- início ----------
+  readColors();
+  new MutationObserver(function () { readColors(); draw(); }).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+  window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", function () { readColors(); draw(); });
+  new ResizeObserver(resize).observe(wrap);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(draw);
+  var first = -1;
+  for (var n = 0; n < byName.length; n++) if (byName[n].name === "Avenida Duque de Caxias") first = n;
+  if (first >= 0) select(first, false);
+  resize();
+  if (first >= 0) { var b = byName[first].bb; view.cx = (b[0] + b[2]) / 2; view.cy = (b[1] + b[3]) / 2; view.k = Math.min(0.11, (H - 160) / (b[3] - b[1])); draw(); }
+}
+</script>
+</body>
+</html>

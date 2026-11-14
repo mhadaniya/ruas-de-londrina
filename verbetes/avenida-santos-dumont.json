@@ -1,0 +1,16 @@
+{
+  "rua": "Avenida Santos Dumont",
+  "homenageado": "Alberto Santos Dumont (1873-1932)",
+  "confirmado": true,
+  "texto": [
+    "Alberto Santos Dumont foi um inventor e aviador mineiro, nascido em Palmira, cidade que hoje leva o seu nome. Filho de um grande cafeicultor, mudou-se jovem para Paris, onde construiu balões e dirigíveis.",
+    "Em 1901 contornou a Torre Eiffel com o dirigível nº 6 e ganhou o Prêmio Deutsch. Em 1906 voou com o 14-Bis no campo de Bagatelle, em Paris, no primeiro voo de um avião homologado na Europa. Depois criou o Demoiselle, um avião leve precursor dos ultraleves.",
+    "No Brasil é chamado de Pai da Aviação. Morreu no Guarujá, em São Paulo, em 1932."
+  ],
+  "fontes": [
+    {
+      "titulo": "Wikipédia: Alberto Santos Dumont",
+      "url": "https://pt.wikipedia.org/wiki/Alberto_Santos_Dumont"
+    }
+  ]
+}
