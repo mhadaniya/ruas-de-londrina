@@ -2,7 +2,7 @@
 
 Mapa das ruas de Londrina (PR). Clique em uma rua para saber de onde vem o nome dela.
 
-O site é estático: um `index.html`, o traçado das ruas em `data/ruas.json` e um arquivo por rua na pasta `verbetes/`. Não há servidor nem etapa de build.
+!["Screenshot do site mostrando o mapa das ruas de Londrina"](img/screenshoot.png)
 
 ## Como contribuir com um verbete
 
@@ -42,15 +42,6 @@ python -m http.server 8000
 
 Depois abra `http://localhost:8000`. Abrir o `index.html` direto do disco não funciona, porque o navegador bloqueia a leitura dos arquivos JSON.
 
-## Publicar no GitHub Pages
-
-Em **Settings > Pages**, escolha **Deploy from a branch**, branch `main`, pasta `/ (root)`.
-
-Os botões de contribuição descobrem o repositório pelo endereço `usuario.github.io/repositorio`. Se o site usar domínio próprio, adicione no `<head>` do `index.html`:
-
-```html
-<meta name="repo" content="usuario/repositorio">
-```
 
 ## Dados
 
